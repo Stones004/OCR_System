@@ -147,11 +147,21 @@ for key in PATH_KEYS:
 
     if key in CONFIG["paths"]:
 
+        resolved = (
+            BASE_DIR /
+
+            CONFIG["paths"][key]
+        ).resolve()
+
+        # Self-healing: these are plain data directories (scan intake,
+        # manifests, caches, ...), not git-tracked -- a fresh clone or a
+        # wiped runtime/ volume must not need a manual mkdir step before
+        # e.g. runtime_watcher's incoming_dir.iterdir() will work.
+        resolved.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
         CONFIG["paths"][key] = str(
-
-            (
-                BASE_DIR /
-
-                CONFIG["paths"][key]
-            ).resolve()
+            resolved
         )
