@@ -1,0 +1,8 @@
+# Per-question-paper exceptions for labels that don't match the legacy
+# NNa pattern (two-digit number + one lowercase letter, e.g. "07b").
+# Keyed by question_paper_id, NOT booklet_id -- one question paper is
+# reused across many booklets/students.
+#
+# example_paper_id:
+#   "Q1": 01a
+#   "II": 02a

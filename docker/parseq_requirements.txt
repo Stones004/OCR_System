@@ -1,0 +1,20 @@
+# PARSeq inference-only runtime, for the Docker image's SECOND venv
+# (see Dockerfile's parseq-builder stage). Derived from
+# D:\OCR_codes\ocr_dataset_builder\requirements.txt, trimmed to what
+# app/engine/stages/ocr/parseq_worker.py actually imports at runtime
+# (torch, PIL, torchvision.transforms, strhub) -- the dataset-builder-only
+# deps (requests, python-dotenv, tqdm -- for the Mistral/labelling tools)
+# aren't needed here, since this venv only ever runs the worker subprocess.
+#
+# torch/torchvision are installed separately, from the CPU wheel index,
+# in the Dockerfile itself (see D:\OCR_codes's own note on dropping
+# +cu128 for a GPU-less machine -- true here too, since this runs in a
+# container with no GPU passthrough configured).
+
+numpy==1.26.4
+Pillow==12.3.0
+PyYAML==6.0.3
+pytorch-lightning==2.6.5
+timm==1.0.29
+nltk==3.10.3
+-e git+https://github.com/baudm/parseq.git@1902db043c029a7e03a3818c616c06600af574be#egg=strhub

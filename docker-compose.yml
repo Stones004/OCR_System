@@ -1,0 +1,165 @@
+# Adapted from D:\OMR_System\docker-compose.yml: "gpu-worker" is kept as
+# the queue/service name (see app/services/gpu_service.py's docstring)
+# even though nothing here needs a GPU -- what actually matters is that
+# it's the ONE process hosting the PARSeq subprocess (--pool=solo).
+#
+# PARSeq itself IS bundled into the image now (Dockerfile's
+# parseq-builder stage builds it a Linux-native venv, since the dev
+# machine's D:\OCR_codes venv is a Windows build that can't run in a
+# container). The checkpoint ships in ./weights/, mounted below like
+# D:\OMR_System mounted its own YOLOX weights.
+#
+# The config directory is NOT volume-mounted here, unlike
+# D:\OMR_System's docker-compose.yml -- see
+# app/core/config/config.docker.yaml's header comment for why (the
+# host's config.yaml has Windows-only PARSeq paths that would break the
+# container if bind-mounted over the image's own config).
+
+services:
+  ocr-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ocr-system
+    image: ocr-system:latest
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./scans:/workspace/scans
+      - ./reports:/workspace/reports
+      - ./logs:/workspace/logs
+      - ./output:/workspace/output
+      - ./runtime:/workspace/runtime
+      - ./weights:/workspace/weights
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    depends_on:
+      - redis
+
+  openobserve:
+
+    image: public.ecr.aws/zinclabs/openobserve:latest
+
+    # Named ocr-openobserve, not openobserve, to avoid colliding with a
+    # container D:\OMR_System's own docker-compose.yml may have left
+    # behind under that name.
+    container_name: ocr-openobserve
+
+    ports:
+      - "5080:5080"
+
+    environment:
+      ZO_ROOT_USER_EMAIL: admin@example.com
+      # Must satisfy OpenObserve's password policy (8-128 chars,
+      # lowercase + uppercase + digit + special character) and match
+      # app/core/config/config.docker.yaml's observability.password,
+      # since that's what the app authenticates trace ingestion with.
+      ZO_ROOT_USER_PASSWORD: "Admin@123"
+
+    volumes:
+      - ./runtime/openobserve:/data
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+
+    command: >
+      redis-server --appendonly yes
+
+    volumes:
+      - ./runtime/redis:/data
+
+    ports:
+      - "6379:6379"
+
+    restart: unless-stopped
+
+  cpu-worker:
+    container_name: ocr-cpu-worker
+    image: ocr-system:latest
+
+    depends_on:
+      - redis
+
+    # Job orchestration only (validate/submit/collect/export) -- never
+    # touches the OCR engine directly, so it's safe to run with real
+    # concurrency, unlike ocr-worker below.
+    command: >
+      celery -A app.workers.celery_app worker --pool=threads --concurrency=3 -Q celery -n cpu-worker@%h
+
+    # app/monitoring/metrics.py's actual pipeline metrics (PDF_PROCESSED,
+    # GPU_TIME, etc.) are only ever recorded here, in
+    # app/pipeline/processing_pipeline.py -- never in the ocr-system
+    # container. Without its own metrics server + published port, those
+    # numbers were unreachable: ocr-system's :8001 only ever showed the
+    # metric names with everything stuck at zero. See
+    # app/workers/celery_app.py's _init_metrics.
+    environment:
+      METRICS_PORT: "8002"
+
+    ports:
+      - "8002:8002"
+
+    volumes:
+      - ./scans:/workspace/scans
+      - ./reports:/workspace/reports
+      - ./logs:/workspace/logs
+      - ./output:/workspace/output
+      - ./runtime:/workspace/runtime
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+  ocr-worker:
+
+    image: ocr-system:latest
+    container_name: ocr-worker
+
+    depends_on:
+      - redis
+
+    # --pool=solo, one process: exactly one PARSeq subprocess exists
+    # (its stdin/stdout pipe isn't shareable). See top-of-file note.
+    command: >
+      celery -A app.workers.celery_app worker --pool=solo -Q gpu_inference -n ocr-worker@%h
+
+    volumes:
+      - ./scans:/workspace/scans
+      - ./reports:/workspace/reports
+      - ./logs:/workspace/logs
+      - ./output:/workspace/output
+      - ./runtime:/workspace/runtime
+      - ./weights:/workspace/weights
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+  flower:
+
+    image: ocr-system:latest
+
+    container_name: ocr-flower
+
+    depends_on:
+      - redis
+
+    command: >
+      celery -A app.workers.celery_app flower
+
+    ports:
+      - "5555:5555"
+
+    restart: unless-stopped
+
+    env_file:
+      - .env

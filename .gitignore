@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Virtual environments (regenerate per README / ocr_dataset_builder setup)
+venv/
+venv_parseq/
+
+# Secrets / local overrides -- .env.example is the tracked template
+.env
+
+# Model checkpoints (large binaries -- see README for fetching/rebuilding)
+weights/
+
+# Runtime, logs, and generated output
+logs/
+output/
+reports/
+runtime/
+data/input_pdfs/
+
+# Scanned documents and per-job artifacts (sensitive, regenerated at runtime)
+scans/
+
+# Frontend build artifacts and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/*.log
+
+# Claude Code local session state
+.claude/
+
+# OS cruft
+.DS_Store
+Thumbs.db

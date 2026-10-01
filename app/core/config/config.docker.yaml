@@ -1,0 +1,279 @@
+# ======================================================================
+# Docker Compose variant of config.yaml.
+#
+# Copied into the image at build time (see Dockerfile), REPLACING
+# app/core/config/config.yaml inside the container -- not volume-mounted
+# over it, unlike D:\OMR_System's docker-compose.yml, which bind-mounted
+# the host's config.yaml straight into the container. That doesn't work
+# here: this project's PARSeq path is host-specific (a Windows venv on
+# the dev machine), so the file the container actually needs differs
+# from the one checked out natively. Baking a Docker-specific copy in at
+# build time keeps both usable from the same checkout without one
+# breaking the other.
+#
+# Only two leaves actually need to differ from config.yaml:
+#   - ocr_engine.ocr.parseq.venv_python / checkpoint -- point at the
+#     SECOND venv this image builds for PARSeq (see Dockerfile's
+#     parseq-builder stage) instead of the host's D:\OCR_codes checkout.
+#   - execution.broker_url -- "redis" is the Compose service name, not
+#     reachable as "localhost" from inside another container.
+# Everything else is identical to config.yaml; see that file's comments
+# for what each section means.
+# ======================================================================
+
+
+paths:
+  incoming_dir: scans/incoming
+  accepted_dir: scans/accepted
+  processed_dir: scans/processed
+  review_dir: scans/review
+  needs_rescan_dir: scans/needs_rescan
+  exports_dir: scans/exports
+  reports_dir: reports
+  manifest_dir: scans/manifests
+  ui_output_dir: output/annotated/ui
+  debug_output_dir: output/annotated/debug
+  logs_dir: logs
+  temp_pages_dir: runtime/temp_pages
+  page_cache_dir: runtime/page_cache
+
+pdf:
+  dpi: 300
+  skip_pages: 2
+  supported_extensions: [".pdf"]
+
+
+runtime:
+  preferred_device: cpu
+  fallback_device: cpu
+  api_mode: false
+  manifest_cache: true
+  watch_mode: true
+  gpu_worker_name: ocr-worker
+
+execution:
+  backend: celery
+  broker_url: redis://redis:6379/0
+
+output:
+  save_exports: true
+  save_visualizations: true
+  json_indent: 4
+
+api:
+  host: 0.0.0.0
+  port: 8000
+
+system:
+  version: 1.0.0
+  environment: production
+
+watcher:
+  polling_interval: 1
+  recursive: false
+
+debug:
+  show_debug_windows: false
+  verbose_logging: true
+
+reports:
+  save_json_reports: true
+  include_page_metrics: true
+
+
+logging:
+  level: INFO
+  save_logs: true
+  console_logging: true
+
+
+observability:
+  enabled: false
+  service_name: ocr-answer-scanner
+  endpoint: http://openobserve:5080/api/default/v1/traces
+  environment: production
+  organization: default
+  username: admin@example.com
+  # Must match the openobserve service's ZO_ROOT_USER_PASSWORD in
+  # docker-compose.yml, and satisfy OpenObserve's password policy
+  # (8-128 chars, lowercase + uppercase + digit + special character).
+  password: Admin@123
+
+
+thresholds:
+  geometry:
+    min_page_coverage: 0.6
+    min_perspective_score: 0.8
+    border_margin: 15
+  blur:
+    hard_threshold: 35
+    soft_threshold: 55
+  skew:
+    max_safe_angle: 10
+    min_hough_lines: 5
+  brightness:
+    min_brightness: 120
+    max_brightness: 245
+  contrast:
+    min_contrast: 14
+  content_density:
+    min_density: 0.02
+  edge_density:
+    min_density: 0.012
+  scoring:
+    min_acceptable_score: 60
+
+layout:
+  aspect_ratio:
+    min: 1.2
+    max: 1.6
+  qr_required: false
+
+
+visualization:
+  enabled: true
+  save_ui_images: false
+  save_debug_images: true
+  detection_box_thickness: 2
+  font_scale: 0.65
+  image_format: "jpg"
+  jpeg_quality: 95
+  class_colors:
+    question_label: [0, 0, 255]
+    answer_region: [0, 200, 0]
+
+
+ocr_engine:
+
+  pipeline:
+    use_annotation_removal: true
+    use_noise_classifier: false       # drop "noise" ROIs before PARSeq ever sees them (see noise_classifier below)
+    verbose: false
+
+  deskew:
+    angle_min: -5.0
+    angle_max: 5.0
+    coarse_step: 0.5
+    fine_step: 0.05
+    fine_window: 0.5
+    border_value: 255
+    edge_fallback_angle: 0.0
+    search_width: 800                 # downscale width for the angle search (see deskewer.py)
+
+  vertical:
+    threshold: 180
+    min_kernel_height: 80
+    kernel_height_divisor: 25
+    repair_kernel: [3, 15]
+
+  separator:
+    left_ratio: 0.03
+    right_ratio: 0.30
+    min_height_ratio: 0.50
+    min_aspect_ratio: 40
+    expected_x: null
+    tolerance: null
+
+  crop:
+    right_padding: 5
+
+  ink_removal:
+    red_lower1: [0, 100, 60]
+    red_upper1: [15, 255, 255]
+    red_lower2: [168, 100, 60]
+    red_upper2: [179, 255, 255]
+    green_lower: [40, 100, 60]
+    green_upper: [100, 255, 255]
+    kernel_size: 5
+    close_iterations: 2
+    dilate_iterations: 2
+    remove_fringe: true
+    fringe_zone_kernel_size: 11
+    fringe_zone_iterations: 4
+    fringe_lightness_max: 250
+    fringe_min_component_area: 500
+    fill_color: [255, 255, 255]
+
+  preprocess:
+    min_area: 20
+    min_contrast_gap: 30
+
+  annotation_detector:
+    min_width: 4
+    min_height: 3
+    padding: 10
+    merge_dist: 16
+    min_confident_area: 70
+    min_confident_dim: 4
+    min_ink_pixels: 15
+    min_fill_ratio: 0.03
+    row_y_tolerance: 18
+
+    reject_above_top_line: true
+    top_line_search_frac: 0.2
+    top_line_min_len_ratio: 0.6
+    top_line_margin: 5
+
+    exclude_sparse_strokes: true
+    sparse_stroke_density_max: 0.12
+    sparse_stroke_min_dim: 80
+
+    exclude_long_vertical_strips: true
+    long_strip_max_width: 30
+    long_strip_min_height: 100
+
+    refine_height: 140
+    valley_threshold: 0.15
+    min_valley_width: 5
+    min_segment_height: 20
+    refine_blur_ksize: 9
+
+    line_kernel_min: 30
+    line_kernel_divisor: 4
+    line_dilate_kernel: 3
+
+  visualization:
+    separator_candidate_color: [0, 255, 0]
+    separator_candidate_thickness: 2
+    separator_selected_color: [0, 0, 255]
+    separator_selected_thickness: 4
+    roi_color: [0, 0, 255]
+    roi_thickness: 2
+
+  noise_classifier:
+    # Off by default (see pipeline.use_noise_classifier above). Reuses the
+    # same Linux parseq-builder venv as ocr.parseq below -- torchvision
+    # already lives there as a strhub dependency. To turn this on in
+    # Docker: mount your checkpoint at the path below (weights/ is already
+    # a volume) and flip pipeline.use_noise_classifier to true.
+    venv_python: /opt/parseq-venv/bin/python
+    checkpoint: /workspace/weights/noise_classifier/best.pt
+    device: auto
+    confidence_threshold: 0.7
+    drop_uncertain: false
+    shutdown_timeout: 10
+
+  ocr:
+    backend: parseq
+
+    parseq:
+      # Built by the Dockerfile's parseq-builder stage into this image;
+      # not the host's D:\OCR_codes venv (see top-of-file note).
+      # Absolute, not relative: per this project's own config
+      # convention (inherited from D:\OCR_codes), a relative path here
+      # would resolve against THIS FILE's folder (app/core/config/), not
+      # BASE_DIR -- weights/... would land on
+      # app/core/config/weights/..., which doesn't exist.
+      venv_python: /opt/parseq-venv/bin/python
+      checkpoint: /workspace/weights/parseq_base_mix_v2.ckpt
+      device: auto
+      norm_mean: 0.5
+      norm_std: 0.5
+      shutdown_timeout: 10
+
+  assembler:
+    export_version: 1
+
+  question_mapping:
+    override_file: data/overrides/question_paper_overrides.yaml
+    allow_bare_numerals: true
