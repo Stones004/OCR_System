@@ -15,13 +15,25 @@ also runs as a single stacked forward pass, not just N calls folded into
 one round-trip. Prints "READY" once the model has finished loading.
 """
 import json
+import os
 import sys
+
+# Must be set before torch/numpy import -- OpenMP/MKL size their thread
+# pools at init time. Without this, each subprocess defaults to grabbing
+# every host core for its own matmuls; with several ocr-worker replicas
+# (see docker-compose.yml's `deploy.replicas`) running their own PARSeq
+# subprocess side by side, that means N subprocesses all fighting over
+# the same cores instead of actually running in parallel.
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
 
 import torch
 from PIL import Image
 import torchvision.transforms as T
 
 from strhub.models.utils import load_from_checkpoint
+
+torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "4")))
 
 checkpoint_path = sys.argv[1]
 

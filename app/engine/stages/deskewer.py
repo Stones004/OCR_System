@@ -148,9 +148,11 @@ class Deskewer:
         # on a downscaled copy -- only the final rotate() below needs full
         # resolution. INTER_NEAREST keeps the resized image strictly
         # binary (0/255), matching what projection_score expects.
+        # search_width <= 0 disables the downscale: the angle search then
+        # runs at full resolution, exactly like D:\OCR_codes.
         search_binary = binary
 
-        if binary.shape[1] > self.search_width:
+        if self.search_width > 0 and binary.shape[1] > self.search_width:
 
             scale = self.search_width / binary.shape[1]
 

@@ -186,8 +186,9 @@ ocr_engine:
 
   pipeline:
     use_annotation_removal: true      # erase red/green reviewer ink before detection
-    use_noise_classifier: false       # drop "noise" ROIs before PARSeq ever sees them (see noise_classifier below)
+    use_noise_classifier: true        # drop "noise" ROIs before PARSeq ever sees them (see noise_classifier below)
     verbose: false                    # per-component / per-candidate console logging
+    save_roi_debug: true              # dump the exact ROI images sent to PARSeq into runtime/roi_debug
 
   deskew:
     angle_min: -5.0
@@ -197,7 +198,7 @@ ocr_engine:
     fine_window: 0.5
     border_value: 255
     edge_fallback_angle: 0.0
-    search_width: 800                 # downscale width for the angle search (see deskewer.py)
+    search_width: 0                   # 0 = full-res angle search (same as OCR_codes); >0 = downscale to this width, faster (see deskewer.py)
 
   vertical:
     threshold: 180
@@ -236,6 +237,11 @@ ocr_engine:
   preprocess:
     min_area: 20
     min_contrast_gap: 30
+
+  roi_enhance:
+    enabled: true                   # Otsu-binarize every ROI before PARSeq (black ink on white); false = plain gray crops
+    blur_ksize: 3                   # odd Gaussian kernel applied before Otsu; 0 = off
+    min_contrast_gap: 30            # keep the gray crop unless Otsu's threshold sits this far below its mean
 
   annotation_detector:
     min_width: 4
@@ -299,7 +305,7 @@ ocr_engine:
       # inside this repo so production doesn't depend on another project's
       # directory. See README for rebuilding it from scratch if needed.
       venv_python: D:/OCR_System/venv_parseq/Scripts/python.exe
-      checkpoint: D:/OCR_System/weights/parseq_base_mix_v2.ckpt
+      checkpoint: D:\OCR_System\weights\parseq_replay30_s44.ckpt
       device: auto
       norm_mean: 0.5
       norm_std: 0.5

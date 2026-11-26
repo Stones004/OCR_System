@@ -638,7 +638,15 @@ class ProcessingPipeline:
                 # once, on job_results sorted by page_number.
                 # =========================================
 
-                WINDOW_SIZE = 3
+                # Matches docker-compose.yml's ocr-worker replica count
+                # (currently 4) plus a little slack. Needs to be at least
+                # that many for multiple replicas to actually help a
+                # single document: Redis's queue isn't round-robin fair
+                # under a trickle of one-task-at-a-time submissions, so a
+                # window too close to 1 tends to keep re-feeding whichever
+                # worker already happens to be polling instead of
+                # spreading work across all of them.
+                WINDOW_SIZE = 6
 
                 pending = deque()
 

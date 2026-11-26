@@ -15,12 +15,22 @@ runs as a single stacked forward pass. Prints "READY" once the model has
 finished loading.
 """
 import json
+import os
 import sys
+
+# See parseq_worker.py's identical guard -- must precede the torch import,
+# and for the same reason: several ocr-worker replicas each spawn their
+# own copy of this subprocess, and without a cap each one defaults to
+# claiming every host core.
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("MKL_NUM_THREADS", "4")
 
 import torch
 from PIL import Image
 from torch import nn
 from torchvision import models, transforms
+
+torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "4")))
 
 checkpoint_path = sys.argv[1]
 

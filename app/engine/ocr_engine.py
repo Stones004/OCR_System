@@ -23,7 +23,11 @@ app/pipeline/processing_pipeline.py.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
+import cv2
+
+from app.core.config.config_loader import CONFIG
 from app.core.config.ocr_engine_config import ocr_engine_config
 from app.core.models.detection import DetectionResult, PredictionResult
 from app.core.models.omr_results import OMRResult
@@ -37,6 +41,7 @@ from app.engine.stages.annotation_remover import AnnotationRemover
 from app.engine.stages.preprocessor import Preprocessor
 from app.engine.stages.annotation_detector import AnnotationDetector
 from app.engine.stages.noise_classifier import NoiseClassifier
+from app.engine.stages.roi_enhancer import RoiEnhancer
 from app.engine.stages.roi_text_extractor import ROITextExtractor
 
 
@@ -59,6 +64,8 @@ class AnswerScriptEngine:
         self.cropper = Cropper(cfg.crop)
 
         self.preprocessor = Preprocessor(cfg.preprocess)
+
+        self.roi_enhancer = RoiEnhancer(cfg.roi_enhance)
 
         self.annotation_detector = AnnotationDetector(
             cfg.annotation_detector, cfg.visualization, verbose=cfg.pipeline.verbose
@@ -85,9 +92,27 @@ class AnswerScriptEngine:
 
         self.right_padding = cfg.crop.right_padding
 
+        self.roi_debug_dir = (
+            Path(CONFIG["paths"]["page_cache_dir"]).parent / "roi_debug"
+            if cfg.pipeline.save_roi_debug
+            else None
+        )
+
     # =========================================================
     # ENGINE CORE
     # =========================================================
+
+    def _dump_rois(self, rois, page_number):
+        """Debug aid: writes each ROI exactly as PARSeq receives it."""
+
+        self.roi_debug_dir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%H%M%S")
+
+        for i, roi in enumerate(rois, start=1):
+            cv2.imwrite(
+                str(self.roi_debug_dir / f"{stamp}_p{page_number:03d}_roi{i:03d}.png"),
+                roi["roi"],
+            )
 
     def process_image(self, image, page_number=1):
 
@@ -147,6 +172,13 @@ class AnswerScriptEngine:
 
         if self.noise_classifier is not None and rois:
             rois = self.noise_classifier.filter_rois(rois, page_number=page_number)
+
+        # After noise classification on purpose: that model was trained on
+        # gray crops. Same order as D:\OCR_codes\main.py.
+        self.roi_enhancer.enhance_rois(rois)
+
+        if self.roi_debug_dir is not None:
+            self._dump_rois(rois, page_number)
 
         labels = self.text_extractor.extract(gray, rois) if rois else []
 

@@ -34,6 +34,7 @@ class PipelineConfig:
     use_annotation_removal: bool      # erase red/green reviewer ink before detection
     use_noise_classifier: bool        # drop "noise" ROIs before PARSeq ever sees them
     verbose: bool                     # per-component / per-candidate console logging
+    save_roi_debug: bool              # dump the exact ROI images sent to PARSeq into runtime/roi_debug
 
 
 # ======================================================================
@@ -104,6 +105,16 @@ class InkRemovalConfig:
 @dataclass(frozen=True)
 class PreprocessConfig:
     min_area: int
+    min_contrast_gap: float
+
+
+@dataclass(frozen=True)
+class RoiEnhanceConfig:
+    enabled: bool                            # false: ROIs stay plain grayscale crops
+    blur_ksize: int                          # odd Gaussian kernel before Otsu; 0 = no blur
+    # Per-ROI Otsu can split a near-uniform crop (blank paper) at a meaningless level and turn
+    # paper noise into ink. If the threshold is not at least this far below the crop's mean
+    # gray level, the crop is left as it was.
     min_contrast_gap: float
 
 
@@ -240,6 +251,7 @@ class OcrEngineConfig:
     crop: CropConfig
     ink_removal: InkRemovalConfig
     preprocess: PreprocessConfig
+    roi_enhance: RoiEnhanceConfig
     annotation_detector: AnnotationDetectorConfig
     visualization: VisualizationConfig
     noise_classifier: NoiseClassifierConfig

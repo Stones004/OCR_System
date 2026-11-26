@@ -121,13 +121,35 @@ services:
   ocr-worker:
 
     image: ocr-system:latest
-    container_name: ocr-worker
+
+    # No container_name: a fixed name can't be shared across replicas.
+    # Each replica still self-identifies as "ocr-worker@<container
+    # hostname>" below, which is all app/api/routes/health.py's
+    # gpu_worker_name substring check needs.
+    deploy:
+      replicas: 4
 
     depends_on:
       - redis
 
-    # --pool=solo, one process: exactly one PARSeq subprocess exists
-    # (its stdin/stdout pipe isn't shareable). See top-of-file note.
+    # --pool=solo, one process per replica: exactly one PARSeq subprocess
+    # per container (its stdin/stdout pipe isn't shareable). See
+    # top-of-file note. Scaling up means more of these containers, each
+    # with their own subprocess, not more threads in one -- see
+    # parseq_worker.py's OMP/MKL thread cap for why that matters once
+    # several of these run side by side.
+    #
+    # 4 replicas x 4 threads = 16 of this host's 20 cores, leaving a
+    # few free for cpu-worker/ocr-system/the OS. Tested 6 replicas (3
+    # threads each) and confirmed it doesn't help a single document any
+    # further -- stage=gpu_total drops to ~0.001s at that point, meaning
+    # the GPU-worker pool is already idle-waiting on the CPU-worker's own
+    # per-page pacing, not the other way round. 4 is the sweet spot until
+    # that CPU-side cost itself comes down.
+    environment:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+
     command: >
       celery -A app.workers.celery_app worker --pool=solo -Q gpu_inference -n ocr-worker@%h
 
